@@ -1,0 +1,7 @@
+[[https://travis-ci.org/NewCircleMovement/tinkuy-member-check-app][https://travis-ci.org/NewCircleMovement/tinkuy-member-check-app.png]]
+
+[[https://github.com/NewCircleMovement/tinkuy-member-check-app/raw/master/assets/icon.png]]
+
+Simple utility app.
+
+See https://tinkuy-member-check.solsort.com
