@@ -302,13 +302,31 @@
       (for [obj (filter #(< 0 (count @(db :entries (get % "id")))) objs)]
         [show-user obj]))
     ]))
+(defn loading []
+  (if @(subscribe [:db :loading])
+    [:div
+     {:style {:position :fixed
+              :display :inline-block
+              :top 0 :left 0
+              :width "100%"
+              :heigth "100%"
+              :background-color "rgba(0,0,0,0.6)"
+              :color "white"
+              :z-index 100
+              :padding-top (* 0.3 js/window.innerHeight)
+              :text-align "center"
+              :font-size "48px"
+              :text-shadow "2px 2px 8px #000000"
+              :padding-bottom (* 0.7 js/window.innerHeight)
+              }}
+     "Working..."
+     ]
+    [:span]
+    ))
 (defn main []
   (solsort.util/next-tick process)
   [:div.ui.container
-   [:div
-    (if @(db :loading)
-      "loading"
-      "")]
+   [loading]
    [:h1 "Tinkuy Member Check"]
    "Connect to tinkuy.dk, and upload bank and stripe report, to get a status for paying members. " [:br]
    "Upload tinkuy member export, bank statement, and stripe statement to compare."
