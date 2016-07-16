@@ -43,7 +43,9 @@
      {:on-click #(apply db! (concat id [(not value)]))
       :src (if value "assets/check.png" "assets/uncheck.png")}]))
 
-(defn select [id options]
+(defn select
+  "This is a select widget"
+  [id options]
   (let [current @(subscribe [:ui id])]
     (into [:select
            {:value (prn-str current)
@@ -81,6 +83,10 @@
                       (map #(.slice (first %) 1)
                              (re-seq #"(,[^\",][^,]*|,\"[^\"]*\"|,)" line)))
                     (split raw #"\n")))
+          stripe (and stripe
+                      (map
+                       #(into {} (map vector (first stripe)%))
+                       (rest stripe)))
           merkur (map #(split % #";") (split raw #"\n"))
           merkur (and (= 27 (count (first merkur))) merkur)]
       (log 'stripe stripe)
@@ -90,7 +96,8 @@
     merkur (db! :merkur merkur)
     :else (js/alert "Input file not in expected format")))))
 
-(log @(db))
+
+(log @(db :stripe))
 
 (defn file-input  [id & {:keys [title]
                     :or {title "upload"}}]
@@ -125,3 +132,5 @@
    ])
 
 (render [main])
+
+(identity js/window.innerHeight)
