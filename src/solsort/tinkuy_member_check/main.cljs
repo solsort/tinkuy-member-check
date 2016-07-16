@@ -73,11 +73,8 @@
              :value @(apply db id)
              :on-change #(apply db! (concat id [(.-value (.-target %1))]))}]))
 
-(defn handle-file [id file]
-  (go
-    (let [raw (<! (<blob-text file))
-         tinkuy (u/parse-json-or-nil raw)
-          stripe (if (string/starts-with? raw "id,Description,Created (UTC),Amount,Amount Refunded,Currency,Converted Amount,Converted Amount Refunded,Fee,Tax,Converted Currency,Mode,Status,Statement Descriptor,Customer ID,Customer Description,Customer Email,Captured,Card ID,Card Last4,Card Brand,Card Funding,Card Exp Month,Card Exp Year,Card Name,Card Address Line1,Card Address Line2,Card Address City,Card Address State,Card Address Country,Card Address Zip,Card Issue Country,Card Fingerprint,Card CVC Status,Card AVS Zip Status,Card AVS Line1 Status,Card Tokenization Method,Disputed Amount,Dispute Status,Dispute Reason,Dispute Date (UTC),Dispute Evidence Due (UTC),Invoice ID,Payment Source Type,Destination,Transfer,Interchange Costs,Merchant Service Charge")
+(defn handle-stripe [raw]
+  (let [stripe (if (string/starts-with? raw "id,Description,Created (UTC),Amount,Amount Refunded,Currency,Converted Amount,Converted Amount Refunded,Fee,Tax,Converted Currency,Mode,Status,Statement Descriptor,Customer ID,Customer Description,Customer Email,Captured,Card ID,Card Last4,Card Brand,Card Funding,Card Exp Month,Card Exp Year,Card Name,Card Address Line1,Card Address Line2,Card Address City,Card Address State,Card Address Country,Card Address Zip,Card Issue Country,Card Fingerprint,Card CVC Status,Card AVS Zip Status,Card AVS Line1 Status,Card Tokenization Method,Disputed Amount,Dispute Status,Dispute Reason,Dispute Date (UTC),Dispute Evidence Due (UTC),Invoice ID,Payment Source Type,Destination,Transfer,Interchange Costs,Merchant Service Charge")
                    (map
                     (fn [line]
                       (map #(.slice (first %) 1)
@@ -87,17 +84,39 @@
                       (map
                        #(into {} (map vector (first stripe)%))
                        (rest stripe)))
-          merkur (map #(split % #";") (split raw #"\n"))
-          merkur (and (= 27 (count (first merkur))) merkur)]
-      (log 'stripe stripe)
+        _ (log stripe)
+          stripe (and stripe
+                      (map
+                       (fn [o]
+                         {:amount (-> (get o "Converted Amount" "\"0,0\"")
+                                     (.slice 1 -1)
+                                     (.replace "," ".")
+                                     (js/parseInt 10))
+                          :date (get o "Created (UTC)")
+                          :email (get o "Customer Email")}) stripe))]
+    stripe))
+(defn handle-merkur [raw]
+  (let [merkur (map #(split % #";") (split raw #"\n"))
+        merkur (and (= 27 (count (first merkur))) merkur)]
+    (map (fn [o]
+           {:date (nth o 23)
+            :amount (js/parseInt (.replace (nth o 15) "," ".") 10)
+            :name (nth o 21)
+            :sender (nth o 7)})
+         merkur)))
+
+(defn handle-file [id file]
+  (go
+    (let [raw (<! (<blob-text file))
+         tinkuy (u/parse-json-or-nil raw)
+          stripe (handle-stripe raw)
+          merkur (handle-merkur raw)
+          ]
       (cond
     tinkuy (db! :users tinkuy)
     stripe (db! :stripe stripe)
     merkur (db! :merkur merkur)
     :else (js/alert "Input file not in expected format")))))
-
-
-(log @(db :stripe))
 
 (defn file-input  [id & {:keys [title]
                     :or {title "upload"}}]
@@ -127,7 +146,6 @@
     "Tinkuy: " (str (count @(db :users))) " entries" [:br]
     "Stripe: " (str (count @(db :stripe))) " entries"  [:br]
     "Merkur: " (str (count @(db :merkur))) " entries"  [:br]
-
     ]
    ])
 
