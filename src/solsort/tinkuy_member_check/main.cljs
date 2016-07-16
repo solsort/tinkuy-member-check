@@ -26,7 +26,7 @@
   "memoised function, that returns a subscription to a given path into the application db"
   (memoize db-raw))
 (defn db! "Write a value into the application db" [& path]
-  (dispatch (into [:db] path)))
+  (dispatch-sync (into [:db] path)))
 
 (register-sub :db
               (fn  [db [_ & path]]
@@ -42,7 +42,6 @@
     [:img.checkbox
      {:on-click #(apply db! (concat id [(not value)]))
       :src (if value "assets/check.png" "assets/uncheck.png")}]))
-
 (defn select
   "This is a select widget"
   [id options]
@@ -54,7 +53,6 @@
           (for [[k v] options]
             (let [v (prn-str v)]
               [:option {:key v :value v} k])))))
-
 (defn input  [id & {:keys [type size max-length options]
                     :or {type "text"}}]
   (case type
@@ -104,19 +102,32 @@
             :name (nth o 21)
             :sender (nth o 7)})
          merkur)))
+(defn update-users [users]
+  (log 'tinkuy-users users)
+  (db! :tinkuy users)
+  (doall
+   (for [user users]
+     (do
+       (db! :users (str (get user "id")) user)
+       (db! :email (get user "email") (get user "id"))
+       ))))
+(go
+  (update-users (<! (<ajax "https://www.tinkuy.dk/api/users"))))
 
 (defn handle-file [id file]
   (go
+    (db! :loading true)
     (let [raw (<! (<blob-text file))
-         tinkuy (u/parse-json-or-nil raw)
+          tinkuy (js->clj (u/parse-json-or-nil raw))
           stripe (handle-stripe raw)
           merkur (handle-merkur raw)
           ]
       (cond
-    tinkuy (db! :users tinkuy)
+    tinkuy (update-users tinkuy)
     stripe (db! :stripe stripe)
     merkur (db! :merkur merkur)
-    :else (js/alert "Input file not in expected format")))))
+    :else (js/alert "Input file not in expected format")))
+    (db! :loading false)))
 
 (defn file-input  [id & {:keys [title]
                     :or {title "upload"}}]
@@ -133,22 +144,73 @@
             :on-change #(handle-file id (aget (.-files (.-target %1)) 0))
             }]])
 
+(defn add-entry [id entry]
+  (log 'add id)
+  (db! :entries id 
+       (conj
+        (or @(db :entries id) #{})
+        entry)))
+
+(defn add-stripes []
+  (doall
+   (for [o @(db :stripe)]
+     (let [id @(db :email (:email o))]
+       (if id
+         (add-entry id o)
+         (db! :missing-stripe
+              (conj @(db :missing-stripe) o)))))))
+
+(defn process []
+  (when
+    (and
+     @(db :stripe)
+     @(db :users)
+     @(db :merkur)
+     (not @(db :missing-stripe)))
+    (db! :loading true)
+    (db! :missing-stripe #{})
+    (go
+      (<! (timeout 0))
+      (add-stripes)
+      (db! :loading false)
+      (log "processed..." @(db))
+    )
+    ))
+
+(log @(db))
+
+(defn stripe-nouser []
+  (let [stripe-missing (seq @(db :missing-stripe))
+        stripe-emails (distinct (map :email stripe-missing))
+        ]
+    [:p
+     (str (count stripe-missing))
+     " stripe payments, from "
+     (count stripe-emails)
+     " emails not matching tinkuy-users. The emails are:"
+     [:p
+      (.join (clj->js stripe-emails) ", ")]
+     ]))
+
 (defn main []
+  (solsort.util/next-tick process)
   [:div.ui.container
+   [:div
+    (if @(db :loading)
+      "loading"
+      "")]
    [:h1 "Tinkuy Member Check"]
-    "Connect to tinkuy.dk, and upload bank and stripe report, to get a status for paying members. " [:br]
-    "Upload tinkuy member export, bank statement, and stripe statement to compare."
+   "Connect to tinkuy.dk, and upload bank and stripe report, to get a status for paying members. " [:br]
+   "Upload tinkuy member export, bank statement, and stripe statement to compare."
    [:p
     [file-input [:text :users] :title "Upload"]]
    [:hr]
    [:p
     {:style {:line-wrap :none}}
-    "Tinkuy: " (str (count @(db :users))) " entries" [:br]
-    "Stripe: " (str (count @(db :stripe))) " entries"  [:br]
-    "Merkur: " (str (count @(db :merkur))) " entries"  [:br]
+    "Tinkuy: " (str (count @(db :users))) " entries loaded." [:br]
+    "Stripe: " (str (count @(db :stripe))) " entries loaded."  [:br]
+    "Merkur: " (str (count @(db :merkur))) " entries loaded."  [:br]
     ]
+   [stripe-nouser]
    ])
-
 (render [main])
-
-(identity js/window.innerHeight)
