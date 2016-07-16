@@ -169,7 +169,8 @@
        (if id
          (add-entry id o)
          (db! :missing-stripe
-              (conj @(db :missing-stripe) o)))))))
+              (conj @(db :missing-stripe) o))
+         )))))
 
 (defn match-merkur []
   (let [entries @(db :merkur)
@@ -208,7 +209,8 @@
           )]
          (if (= 1 (count matches))
            (add-entry (get (first matches) "id") entry)
-           (db! :merkur-missing entry true)
+           (db! :missing-merkur
+                (conj @(db :missing-merkur) entry))
            )
          ))))
   )
@@ -221,6 +223,7 @@
      (not @(db :missing-stripe)))
     (db! :loading true)
     (db! :missing-stripe #{})
+    (db! :missing-merkur #{})
     (go
       (<! (timeout 0))
       (add-stripes)
@@ -238,7 +241,7 @@
     [:p
      "Missing "
      (count stripe-emails)
-     "tinkuy users for "
+     " tinkuy users for "
      (str (count stripe-missing))
      " stripe payments (no matching email addresses)"
      " The emails are:"
