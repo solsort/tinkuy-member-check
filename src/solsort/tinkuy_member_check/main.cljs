@@ -70,6 +70,12 @@
              :value @(apply db id)
              :on-change #(apply db! (concat id [(.-value (.-target %1))]))}]))
 
+(defn fix-date [s]
+  (str
+   (.slice s 6 10)
+   "-" (.slice s 3 5)
+   "-" (.slice s 0 2)
+       ))
 (defn str-normalise [s]
   (.replace
    (.replace
@@ -103,7 +109,7 @@
   (let [merkur (map #(split % #";") (split raw #"\n"))
         merkur (and (= 27 (count (first merkur))) merkur)]
     (map (fn [o]
-           {:date (nth o 23)
+           {:date (fix-date (nth o 23))
             :amount (js/parseInt (.replace (nth o 15) "," ".") 10)
             :name (nth o 21)
             :long-name
@@ -226,19 +232,74 @@
      [:p
       (.join (clj->js stripe-emails) ", ")]]))
 
+(defn merkur-nouser []
+  (let [merkur-missing (seq @(db :missing-merkur))
+        merkur-payments (distinct (map :long-name merkur-missing))]
+    [:p
+     "Missing tinkuy users for "
+     (str (count merkur-missing))
+     " merkur payments "
+     " The missed payments are:"
+     (into [:ul]
+           (map (fn [o] [:li {key (prn-str o)}(.join (clj->js o) " ")]) merkur-payments))
+     ]))
+
+(defn show-user [obj]
+  (let [id (get obj "id")
+        type (get obj "status")
+        payments @(db :entries id)
+        latest-pay (last (sort-by :date payments))
+        amount (get latest-pay :amount 0)
+        expected-amount (case (get obj "membership_id")
+                          1 54
+                          (2 3) 108
+                          4 216
+                          0)
+        ok (= amount expected-amount)
+        ]
+    (do
+      [:tr {:key id
+            :style {:background (if ok :white :red)}}
+       [:td (get obj "firstname")
+        " "
+        (get obj "surname")
+        [:br]
+        (get obj "email")
+        ]
+       [:td type]
+       [:td (case (get obj "membership_id")
+              1 "støtte"
+              2 "basis"
+              3 "basis"
+              4 "komplet"
+              (get obj "membership_id")
+              )]
+       [:td amount]
+       [:td (count @(db :entries id))]
+       [:td (.slice (str (:date latest-pay)) 0 10)]
+       ;[:td (prn-str latest-pay)]
+       ;[:td (prn-str obj)]
+       ]))
+  )
 (defn users []
-  (let [objs (vals @(db :users))]
-    [:div
-     (concat
-      [:div]
-      (for [obj objs]
-        (do
-          [:div {:key (get obj "id")}
-           (get obj "firstname")
-           " "
-           (get obj "surname")
-         ; (prn-str obj)
-])))]))
+  (let [objs
+        (sort-by #(.toLowerCase (get % "firstname"))
+                 (vals @(db :users)))
+        objs (filter #(#{"pending" "active"} (get % "status")) objs)
+        ]
+    [:table
+     [:tr
+      [:th "navn"]
+      [:th "type"]
+      [:th "betalinger"]
+      [:th "data"]]
+     (doall
+      (for [obj (filter #(zero? (count @(db :entries (get % "id")))) objs)]
+        [show-user obj]))
+     (doall
+      (for [obj (filter #(< 0 (count @(db :entries (get % "id")))) objs)]
+        [show-user obj]))
+    ]))
 (defn main []
   (solsort.util/next-tick process)
   [:div.ui.container
@@ -257,6 +318,8 @@
     "Tinkuy: " (str (count @(db :users))) " entries loaded." [:br]
     "Stripe: " (str (count @(db :stripe))) " entries loaded."  [:br]
     "Merkur: " (str (count @(db :merkur))) " entries loaded."  [:br]]
+   [merkur-nouser]
    [stripe-nouser]
-   [users]])
+   [users]
+   ])
 (render [main])
