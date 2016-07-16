@@ -258,6 +258,9 @@
                           4 216
                           0)
         ok (= amount expected-amount)
+        now (js/Date.now)
+        pay-date (js/Date. (.slice (str (:date latest-pay)) 0 10))
+        delta-time (bit-or 0 (/ (- now (js/Number. pay-date)) 1000 60 60 24))
         ]
     (do
       [:tr {:key id
@@ -268,7 +271,12 @@
         [:br]
         (get obj "email")
         ]
-       [:td type]
+       [:td type
+        " \u00a0 " 
+        ]
+       [:td amount
+        " \u00a0 " 
+        ]
        [:td (case (get obj "membership_id")
               1 "støtte"
               2 "basis"
@@ -276,9 +284,11 @@
               4 "komplet"
               (get obj "membership_id")
               )]
-       [:td amount]
-       [:td (count @(db :entries id))]
-       [:td (.slice (str (:date latest-pay)) 0 10)]
+      ; [:td (count @(db :entries id))]
+       [:td {:style {:background (if (> delta-time 31) "yellow" "")}}
+        " \u00a0 " 
+        (.slice (str (:date latest-pay)) 0 10)]
+       ;[:td (str delta-time)]
        ;[:td (prn-str latest-pay)]
        ;[:td (prn-str obj)]
        ]))
@@ -290,17 +300,17 @@
         objs (filter #(#{"pending" "active"} (get % "status")) objs)
         ]
     [:table
-     [:tr
+     #_[:tr
       [:th "navn"]
       [:th "type"]
       [:th "betalinger"]
       [:th "data"]]
      (doall
       (for [obj (filter #(zero? (count @(db :entries (get % "id")))) objs)]
-        [show-user obj]))
+        (show-user obj)))
      (doall
       (for [obj (filter #(< 0 (count @(db :entries (get % "id")))) objs)]
-        [show-user obj]))
+        (show-user obj)))
     ]))
 (defn loading []
   (if @(subscribe [:db :loading])
@@ -323,6 +333,7 @@
      ]
     [:span]
     ))
+
 (defn main []
   (solsort.util/next-tick process)
   [:div.ui.container
