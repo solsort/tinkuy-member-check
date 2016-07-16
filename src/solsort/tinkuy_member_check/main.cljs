@@ -62,8 +62,7 @@
              :style {:padding-right 0
                      :padding-left 0
                      :text-align :center
-                     :overflow :visible
-                     }
+                     :overflow :visible}
              :name (prn-str id)
              :key (prn-str id)
              :size size
@@ -81,24 +80,24 @@
    " "))
 (defn handle-stripe [raw]
   (let [stripe (if (string/starts-with? raw "id,Description,Created (UTC),Amount,Amount Refunded,Currency,Converted Amount,Converted Amount Refunded,Fee,Tax,Converted Currency,Mode,Status,Statement Descriptor,Customer ID,Customer Description,Customer Email,Captured,Card ID,Card Last4,Card Brand,Card Funding,Card Exp Month,Card Exp Year,Card Name,Card Address Line1,Card Address Line2,Card Address City,Card Address State,Card Address Country,Card Address Zip,Card Issue Country,Card Fingerprint,Card CVC Status,Card AVS Zip Status,Card AVS Line1 Status,Card Tokenization Method,Disputed Amount,Dispute Status,Dispute Reason,Dispute Date (UTC),Dispute Evidence Due (UTC),Invoice ID,Payment Source Type,Destination,Transfer,Interchange Costs,Merchant Service Charge")
-                   (map
-                    (fn [line]
-                      (map #(.slice (first %) 1)
-                             (re-seq #"(,[^\",][^,]*|,\"[^\"]*\"|,)" line)))
-                    (split raw #"\n")))
-          stripe (and stripe
-                      (map
-                       #(into {} (map vector (first stripe)%))
-                       (rest stripe)))
-          stripe (and stripe
-                      (map
-                       (fn [o]
-                         {:amount (-> (get o "Converted Amount" "\"0,0\"")
-                                     (.slice 1 -1)
-                                     (.replace "," ".")
-                                     (js/parseInt 10))
-                          :date (get o "Created (UTC)")
-                          :email (get o "Customer Email")}) stripe))]
+                 (map
+                  (fn [line]
+                    (map #(.slice (first %) 1)
+                         (re-seq #"(,[^\",][^,]*|,\"[^\"]*\"|,)" line)))
+                  (split raw #"\n")))
+        stripe (and stripe
+                    (map
+                     #(into {} (map vector (first stripe) %))
+                     (rest stripe)))
+        stripe (and stripe
+                    (map
+                     (fn [o]
+                       {:amount (-> (get o "Converted Amount" "\"0,0\"")
+                                    (.slice 1 -1)
+                                    (.replace "," ".")
+                                    (js/parseInt 10))
+                        :date (get o "Created (UTC)")
+                        :email (get o "Customer Email")}) stripe))]
     stripe))
 (defn handle-merkur [raw]
   (let [merkur (map #(split % #";") (split raw #"\n"))
@@ -111,8 +110,7 @@
             (string/split
              (str-normalise (str (nth o 21) " " (nth o 7)))
              #" ")
-            :address (nth o 7)
-            })
+            :address (nth o 7)})
          merkur)))
 (defn update-users [users]
   (db! :tinkuy users)
@@ -120,11 +118,9 @@
    (for [user users]
      (do
        (db! :users (str (get user "id")) user)
-       (db! :email (get user "email") (get user "id"))
-       ))))
+       (db! :email (get user "email") (get user "id"))))))
 (go
   (update-users (<! (<ajax "https://www.tinkuy.dk/api/users"))))
-
 
 (defn handle-file [id file]
   (go
@@ -132,29 +128,26 @@
     (let [raw (<! (<blob-text file))
           tinkuy (js->clj (u/parse-json-or-nil raw))
           stripe (handle-stripe raw)
-          merkur (handle-merkur raw)
-          ]
+          merkur (handle-merkur raw)]
       (cond
-    tinkuy (update-users tinkuy)
-    stripe (db! :stripe stripe)
-    merkur (db! :merkur merkur)
-    :else (js/alert "Input file not in expected format")))
+        tinkuy (update-users tinkuy)
+        stripe (db! :stripe stripe)
+        merkur (db! :merkur merkur)
+        :else (js/alert "Input file not in expected format")))
     (db! :loading false)))
 
 (defn file-input  [id & {:keys [title]
-                    :or {title "upload"}}]
+                         :or {title "upload"}}]
   [:div.ui.input
    [:label.ui.button.blue {:for (prn-str id)}
     title]
    [:input {:type :file
-            :style {:display :none
-                    }
+            :style {:display :none}
             :name (prn-str id)
             :key (prn-str id)
             :id (prn-str id)
             :value @(apply db id)
-            :on-change #(handle-file id (aget (.-files (.-target %1)) 0))
-            }]])
+            :on-change #(handle-file id (aget (.-files (.-target %1)) 0))}]])
 
 (defn add-entry [id entry]
   (db! :entries id 
@@ -169,58 +162,46 @@
        (if id
          (add-entry id o)
          (db! :missing-stripe
-              (conj @(db :missing-stripe) o))
-         )))))
+              (conj @(db :missing-stripe) o)))))))
 
 (defn match-merkur []
   (let [entries @(db :merkur)
         entries (filter
                  #(= -1 (.indexOf (:address %) "THE CURRENCY CLOUD LTD"))
-                 entries
-                 )
+                 entries)
         users (vals @(db :users))
         users (map
                #(into % {:names
-                           (-> (get % "firstname")
-                               (str " " (get % "surname"))
-                               (str-normalise)
-                               (string/split #" "))})
-               users)
-        ;users (take 5 users)
-        ;entries (take 5 entries)
-
-        ]
-    (log (first users))
+                         (-> (get % "firstname")
+                             (str " " (get % "surname"))
+                             (str-normalise)
+                             (string/split #" "))})
+               users)]
     (doall
      (for [entry entries]
        (let [names (into #{} (:long-name entry))
-                 matches
+             matches
              (loop [matches []
-               user (first users)
-               users (rest users)]
+                    user (first users)
+                    users (rest users)]
                (if (empty? users)
                  matches
-            (recur (if (every? names (:names user))
-                     (conj matches user)
-                     matches)
-                   (first users)
-                   (rest users))
-            )
-          )]
+                 (recur (if (every? names (:names user))
+                          (conj matches user)
+                          matches)
+                        (first users)
+                        (rest users))))]
          (if (= 1 (count matches))
            (add-entry (get (first matches) "id") entry)
            (db! :missing-merkur
-                (conj @(db :missing-merkur) entry))
-           )
-         ))))
-  )
+                (conj @(db :missing-merkur) entry))))))))
 (defn process []
   (when
-    (and
-     @(db :stripe)
-     @(db :users)
-     @(db :merkur)
-     (not @(db :missing-stripe)))
+   (and
+    @(db :stripe)
+    @(db :users)
+    @(db :merkur)
+    (not @(db :missing-stripe)))
     (db! :loading true)
     (db! :missing-stripe #{})
     (db! :missing-merkur #{})
@@ -229,15 +210,12 @@
       (add-stripes)
       (match-merkur)
       (db! :loading false)
-      (log "processed..." @(db))
-    )
-    ))
+      (log "processed..." @(db)))))
 (log @(db))
 
 (defn stripe-nouser []
   (let [stripe-missing (seq @(db :missing-stripe))
-        stripe-emails (distinct (map :email stripe-missing))
-        ]
+        stripe-emails (distinct (map :email stripe-missing))]
     [:p
      "Missing "
      (count stripe-emails)
@@ -246,24 +224,21 @@
      " stripe payments (no matching email addresses)"
      " The emails are:"
      [:p
-      (.join (clj->js stripe-emails) ", ")]
-     ]))
+      (.join (clj->js stripe-emails) ", ")]]))
 
 (defn users []
   (let [objs (vals @(db :users))]
-   [:div
-    (concat
-     [:div]
-     (for [obj objs]
-       (do
-         [:div {:key (get obj "id")}
-          (get obj "firstname")
-          " "
-          (get obj "surname")
+    [:div
+     (concat
+      [:div]
+      (for [obj objs]
+        (do
+          [:div {:key (get obj "id")}
+           (get obj "firstname")
+           " "
+           (get obj "surname")
          ; (prn-str obj)
-          ]))
-     )
-    ]))
+])))]))
 (defn main []
   (solsort.util/next-tick process)
   [:div.ui.container
@@ -281,9 +256,7 @@
     {:style {:line-wrap :none}}
     "Tinkuy: " (str (count @(db :users))) " entries loaded." [:br]
     "Stripe: " (str (count @(db :stripe))) " entries loaded."  [:br]
-    "Merkur: " (str (count @(db :merkur))) " entries loaded."  [:br]
-    ]
+    "Merkur: " (str (count @(db :merkur))) " entries loaded."  [:br]]
    [stripe-nouser]
-   [users]
-   ])
+   [users]])
 (render [main])
