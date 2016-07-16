@@ -4,7 +4,7 @@
    [cljs.core.async.macros :refer [go go-loop alt!]])
   (:require
    [solsort.misc :refer [<blob-url]]
-   [solsort.util
+   [solsort.util :as u
     :refer
     [<blob-text
      <p <ajax <seq<! js-seq normalize-css load-style! put!close!
@@ -71,11 +71,26 @@
              :value @(apply db id)
              :on-change #(apply db! (concat id [(.-value (.-target %1))]))}]))
 
-(go (db! :users (<! (<ajax "http://tinkuy.dk/api/users"))))
-(log @(db :users))
 (defn handle-file [id file]
   (go
-   (log 'handle-file id (<! (<blob-text file)))))
+    (let [raw (<! (<blob-text file))
+         tinkuy (u/parse-json-or-nil raw)
+          stripe (if (string/starts-with? raw "id,Description,Created (UTC),Amount,Amount Refunded,Currency,Converted Amount,Converted Amount Refunded,Fee,Tax,Converted Currency,Mode,Status,Statement Descriptor,Customer ID,Customer Description,Customer Email,Captured,Card ID,Card Last4,Card Brand,Card Funding,Card Exp Month,Card Exp Year,Card Name,Card Address Line1,Card Address Line2,Card Address City,Card Address State,Card Address Country,Card Address Zip,Card Issue Country,Card Fingerprint,Card CVC Status,Card AVS Zip Status,Card AVS Line1 Status,Card Tokenization Method,Disputed Amount,Dispute Status,Dispute Reason,Dispute Date (UTC),Dispute Evidence Due (UTC),Invoice ID,Payment Source Type,Destination,Transfer,Interchange Costs,Merchant Service Charge")
+                   (map
+                    (fn [line]
+                      (map #(.slice (first %) 1)
+                             (re-seq #"(,[^\",][^,]*|,\"[^\"]*\"|,)" line)))
+                    (split raw #"\n")))
+          merkur (map #(split % #";") (split raw #"\n"))
+          merkur (and (= 27 (count (first merkur))) merkur)]
+      (log 'stripe stripe)
+      (cond
+    tinkuy (db! :users tinkuy)
+    stripe (db! :stripe stripe)
+    merkur (db! :merkur merkur)
+    :else (js/alert "Input file not in expected format")))))
+
+(log @(db))
 
 (defn file-input  [id & {:keys [title]
                     :or {title "upload"}}]
@@ -95,12 +110,18 @@
 (defn main []
   [:div.ui.container
    [:h1 "Tinkuy Member Check"]
-   [:div
-    "Connect to tinkuy.dk, and upload bank and stripe report, to get a status for paying members"]
-   [file-input [:text :users] :title "Upload tinkuy"]
-   [file-input [:text :stripe] :title "Upload stripe"]
-   [file-input [:text :merkur] :title "Upload merkur"]
+    "Connect to tinkuy.dk, and upload bank and stripe report, to get a status for paying members. " [:br]
+    "Upload tinkuy member export, bank statement, and stripe statement to compare."
+   [:p
+    [file-input [:text :users] :title "Upload"]]
+   [:hr]
+   [:p
+    {:style {:line-wrap :none}}
+    "Tinkuy: " (str (count @(db :users))) " entries" [:br]
+    "Stripe: " (str (count @(db :stripe))) " entries"  [:br]
+    "Merkur: " (str (count @(db :merkur))) " entries"  [:br]
 
+    ]
    ])
 
 (render [main])
