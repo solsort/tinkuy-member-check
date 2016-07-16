@@ -229,8 +229,10 @@
      (str (count stripe-missing))
      " stripe payments (no matching email addresses)"
      " The emails are:"
-     [:p
-      (.join (clj->js stripe-emails) ", ")]]))
+     [:ul
+      (map (fn [o] [:li (str o)]) (sort stripe-emails))
+     ; (.join (clj->js stripe-emails) ", ")
+      ]]))
 
 (defn merkur-nouser []
   (let [merkur-missing (seq @(db :missing-merkur))
@@ -241,7 +243,7 @@
      " merkur payments "
      " The missed payments are:"
      (into [:ul]
-           (map (fn [o] [:li {key (prn-str o)}(.join (clj->js o) " ")]) merkur-payments))
+           (map (fn [o] [:li {key (prn-str o)}(.join (clj->js o) " ")]) (sort-by #(.join (clj->js %) " ") merkur-payments)))
      ]))
 
 (defn show-user [obj]
