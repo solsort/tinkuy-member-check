@@ -106,10 +106,12 @@
     (map (fn [o]
            {:date (nth o 23)
             :amount (js/parseInt (.replace (nth o 15) "," ".") 10)
-            :name
-            (str-normalise (nth o 21))
-            :sender
-            (str-normalise (nth o 7))
+            :name (nth o 21)
+            :long-name
+            (string/split
+             (str-normalise (str (nth o 21) " " (nth o 7)))
+             #" ")
+            :address (nth o 7)
             })
          merkur)))
 (defn update-users [users]
@@ -169,6 +171,47 @@
          (db! :missing-stripe
               (conj @(db :missing-stripe) o)))))))
 
+(defn match-merkur []
+  (let [entries @(db :merkur)
+        entries (filter
+                 #(= -1 (.indexOf (:address %) "THE CURRENCY CLOUD LTD"))
+                 entries
+                 )
+        users (vals @(db :users))
+        users (map
+               #(into % {:names
+                           (-> (get % "firstname")
+                               (str " " (get % "surname"))
+                               (str-normalise)
+                               (string/split #" "))})
+               users)
+        ;users (take 5 users)
+        ;entries (take 5 entries)
+
+        ]
+    (log (first users))
+    (doall
+     (for [entry entries]
+       (let [names (into #{} (:long-name entry))
+                 matches
+             (loop [matches []
+               user (first users)
+               users (rest users)]
+               (if (empty? users)
+                 matches
+            (recur (if (every? names (:names user))
+                     (conj matches user)
+                     matches)
+                   (first users)
+                   (rest users))
+            )
+          )]
+         (if (= 1 (count matches))
+           (add-entry (get (first matches) "id") entry)
+           (db! :merkur-missing entry true)
+           )
+         ))))
+  )
 (defn process []
   (when
     (and
@@ -181,6 +224,7 @@
     (go
       (<! (timeout 0))
       (add-stripes)
+      (match-merkur)
       (db! :loading false)
       (log "processed..." @(db))
     )
@@ -217,24 +261,8 @@
           ]))
      )
     ]))
-(defn match-merkur []
-  (let [entries @(db :merkur)
-        users (vals @(db :users))]
-    (doall
-     (for [user users]
-       (let [names
-             (str-normalise (str (get user "firstname")
-                                 " " (get user "surname")))
-             names (string/split names #" ")
-             ]
-         (log 'names names)
-         )
-
-    )))
-  )
 (defn main []
   (solsort.util/next-tick process)
-  (match-merkur)
   [:div.ui.container
    [:div
     (if @(db :loading)
